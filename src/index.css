@@ -15,7 +15,7 @@
     --popover: 220 18% 10%;
     --popover-foreground: 0 0% 95%;
 
-    --primary: 43 72% 55%;
+    --primary: 156 64% 69%;
     --primary-foreground: 220 20% 7%;
 
     --secondary: 215 15% 18%;
@@ -47,7 +47,7 @@
 
     --font-heading: 'Space Grotesk', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
-    --gold-glow: 0 0 20px hsl(43 72% 55% / 0.15);
+    --gold-glow: 0 0 20px hsl(156 64% 69% / 0.15);
     --mint: 168 40% 45%;
   }
 }

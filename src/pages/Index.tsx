@@ -84,7 +84,7 @@ const Index = () => {
         <div className="mt-16 flex items-center justify-center gap-3">
           <div className="h-px w-8 bg-border" />
           <span className="font-mono-code text-[9px] tracking-[0.4em] text-muted-foreground uppercase">
-            Secure · Private · Encrypted
+            Human · Centered · Protocol
           </span>
           <div className="h-px w-8 bg-border" />
         </div>
