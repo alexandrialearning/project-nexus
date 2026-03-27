@@ -74,7 +74,7 @@ const Index = () => {
           {isLogin ? "Don't have an account?" : "Already have an account?"}{" "}
           <button
             onClick={() => setIsLogin(!isLogin)}
-            className="text-secondary-foreground hover:text-foreground transition-colors underline underline-offset-4"
+            className="text-accent hover:text-accent/80 transition-colors underline underline-offset-4"
           >
             {isLogin ? "Sign Up" : "Sign In"}
           </button>
