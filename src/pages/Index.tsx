@@ -24,11 +24,9 @@ const Index = () => {
 
       <div className="relative z-10 w-full max-w-sm px-6">
         {/* Brand */}
-        <div className="mb-12 text-center">
-          <h1 className="font-heading text-2xl font-light tracking-[0.2em] text-foreground">
-            Alexandr<span className="text-gradient-gold">.ia</span>
-          </h1>
-          <p className="mt-2 font-mono-code text-[11px] tracking-[0.3em] text-muted-foreground uppercase">
+        <div className="mb-12 flex flex-col items-center">
+          <img src={logo} alt="Alexandr.ia" className="h-20 w-auto mb-3" />
+          <p className="font-mono-code text-[11px] tracking-[0.3em] text-muted-foreground uppercase">
             Scroll_v2
           </p>
         </div>
