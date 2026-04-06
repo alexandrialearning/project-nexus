@@ -18,6 +18,7 @@ type Message = {
   visualization?: string; 
 };
 
+// Intentar obtener de variables de entorno, si no, avisar en consola
 const ELEVENLABS_API_KEY = import.meta.env.VITE_ELEVENLABS_API_KEY;
 const ELEVENLABS_VOICE_ID = import.meta.env.VITE_ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM";
 
@@ -33,19 +34,18 @@ export default function Chat({ user }: { user: User }) {
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-
+  
   const intensityRef = useRef<number>(0);
-  const audioCtxRef = useRef<any>(null);
-  const analyserRef = useRef<any>(null);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
   const analyzeReqRef = useRef<number | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
+  const currentSourceRef = useRef<AudioBufferSourceNode | null>(null);
 
   const [conversations, setConversations] = useState<{ id: string, title: string, timestamp: any }[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [temario, setTemario] = useState<{ temario: string; archivos: { nombre: string; archivo: string; url: string }[] } | null>(null);
 
-  // URL Hardcoded para evitar fallos de configuración
   const MASTER_API_URL = "https://alexandria-v2-master-736878482690.us-central1.run.app";
 
   useEffect(() => {
@@ -91,6 +91,16 @@ export default function Chat({ user }: { user: User }) {
   const scrollToBottom = () => { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); };
   useEffect(() => { scrollToBottom(); }, [messages]);
 
+  const initAudioCtx = useCallback(() => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    if (audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume();
+    }
+    return audioCtxRef.current;
+  }, []);
+
   const saveMessage = async (role: string, content: string, explicitConvId?: string | null, visualization?: string) => {
     try {
       let convId = explicitConvId || currentConversationId;
@@ -121,9 +131,8 @@ export default function Chat({ user }: { user: User }) {
         if (result) activeConvId = result.convId;
     } catch(e) {}
 
-    let response;
     try {
-      response = await fetch(`${MASTER_API_URL}/chat`, {
+      const response = await fetch(`${MASTER_API_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -134,10 +143,7 @@ export default function Chat({ user }: { user: User }) {
         })
       });
 
-      if (!response.ok) {
-          const errorBody = await response.json().catch(() => ({ detail: "Cerebro desconectado" }));
-          throw new Error(errorBody.detail || `HTTP ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const data = await response.json();
       const answerText = data.chatbot_answer;
@@ -148,10 +154,7 @@ export default function Chat({ user }: { user: User }) {
 
     } catch (error: any) {
       console.error("❌ FALLO:", error);
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: `❌ ERROR DEL SERVIDOR:\n${error.message || "Error desconocido"}`
-      }]);
+      setMessages(prev => [...prev, { role: "assistant", content: `❌ ERROR: ${error.message}` }]);
     } finally {
       setIsLoading(false);
     }
@@ -159,59 +162,60 @@ export default function Chat({ user }: { user: User }) {
 
   const stripMarkdown = (text: string) => {
     return text
-      .replace(/(\*\*|__)(.*?)\1/g, '$2') // bold
-      .replace(/(\*|_)(.*?)\1/g, '$2')    // italic
-      .replace(/\[(.*?)\]\(.*?\)/g, '$1') // links
-      .replace(/#{1,6}\s*(.*)/g, '$1')    // headers
-      .replace(/`{1,3}.*?`{1,3}/gs, '')   // inline code & code blocks
-      .replace(/>\s*(.*)/g, '$1')         // quotes
-      .replace(/[-*+]\s+(.*)/g, '$1')     // bullets
-      .replace(/\n+/g, ' ');              // newlines to spaces
+      .replace(/(\*\*|__)(.*?)\1/g, '$2')
+      .replace(/(\*|_)(.*?)\1/g, '$2')
+      .replace(/\[(.*?)\]\(.*?\)/g, '$1')
+      .replace(/#{1,6}\s*(.*)/g, '$1')
+      .replace(/`{1,3}.*?`{1,3}/gs, '')
+      .replace(/>\s*(.*)/g, '$1')
+      .replace(/[-*+]\s+(.*)/g, '$1')
+      .replace(/\n+/g, ' ');
   };
 
   const speakWithElevenLabs = useCallback(async (text: string) => {
     if (!ELEVENLABS_API_KEY) {
-      console.warn("ElevenLabs API Key missing");
+      console.error("ElevenLabs API Key is missing! Check your .env file or VITE variables.");
       return;
     }
-    if (isSpeaking) return;
-    
-    // Ensure/Resume Audio Context
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    const ctx = audioCtxRef.current;
-    if (ctx.state === 'suspended') {
-      await ctx.resume();
+
+    const ctx = initAudioCtx();
+    if (isSpeaking) {
+        if (currentSourceRef.current) {
+            currentSourceRef.current.stop();
+            currentSourceRef.current = null;
+        }
     }
 
     setIsSpeaking(true);
     const cleanedText = stripMarkdown(text);
 
     try {
-      const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream`, {
+      const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}`, {
         method: "POST",
         headers: { "xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json" },
         body: JSON.stringify({ 
           text: cleanedText, 
           model_id: "eleven_multilingual_v2",
-          voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+          voice_settings: { stability: 0.5, similarity_boost: 0.8 }
         }),
       });
       
-      if (!response.ok) throw new Error("ElevenLabs API failure");
+      if (!response.ok) {
+          const errData = await response.json().catch(() => ({}));
+          throw new Error(errData.detail?.status || "API failure");
+      }
       
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.crossOrigin = "anonymous";
-      audioRef.current = audio;
+      const audioData = await response.arrayBuffer();
+      const audioBuffer = await ctx.decodeAudioData(audioData);
+      
+      const source = ctx.createBufferSource();
+      source.buffer = audioBuffer;
+      currentSourceRef.current = source;
 
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
       analyserRef.current = analyser;
 
-      const source = ctx.createMediaElementSource(audio);
       source.connect(analyser);
       analyser.connect(ctx.destination);
 
@@ -219,67 +223,49 @@ export default function Chat({ user }: { user: User }) {
       const dataArray = new Uint8Array(bufferLength);
 
       const updateIntensity = () => {
-        if (!analyserRef.current || audio.paused || audio.ended) {
-          intensityRef.current = 0;
-          return;
-        }
+        if (!analyserRef.current || !isSpeaking) { intensityRef.current = 0; return; }
         analyser.getByteFrequencyData(dataArray);
         let sum = 0;
         for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
         const average = sum / bufferLength;
-        const norm = average / 100;
-        intensityRef.current = Math.min(1.5, Math.pow(norm, 1.2) * 2); 
+        intensityRef.current = Math.min(1.5, Math.pow(average/100, 1.2) * 2.5); 
         analyzeReqRef.current = requestAnimationFrame(updateIntensity);
       };
 
-      audio.onplay = () => {
-        setIsVoiceMode(true);
-        updateIntensity();
-      };
-      audio.onended = () => {
+      source.onended = () => {
         setIsSpeaking(false);
         setIsVoiceMode(false);
-        audioRef.current = null;
         intensityRef.current = 0;
         if (analyzeReqRef.current) cancelAnimationFrame(analyzeReqRef.current);
       };
-      
-      try {
-        await audio.play();
-      } catch (err) {
-        console.error("Audio playback failed", err);
-        setIsSpeaking(false);
-        setIsVoiceMode(false);
-      }
+
+      setIsVoiceMode(true);
+      updateIntensity();
+      source.start(0);
+
     } catch (err) { 
       console.error("ElevenLabs Error:", err);
       setIsSpeaking(false);
       setIsVoiceMode(false);
     }
-  }, [isSpeaking]);
+  }, [isSpeaking, initAudioCtx]);
 
   const startListening = async () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
     
-    // Resume context early on user gesture
-    if (!audioCtxRef.current) {
-      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-    }
-    if (audioCtxRef.current.state === 'suspended') {
-      await audioCtxRef.current.resume();
-    }
-
+    initAudioCtx(); // Wake up on user interaction
     setIsVoiceMode(true);
+    
     const recognition = new SpeechRecognition();
     recognitionRef.current = recognition;
     recognition.lang = "es-MX";
+    
     recognition.onstart = () => {
       setIsListening(true);
-      // Mic visualization
       navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
         micStreamRef.current = stream;
-        const ctx = audioCtxRef.current;
+        const ctx = initAudioCtx();
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
         analyser.fftSize = 256;
@@ -299,6 +285,7 @@ export default function Chat({ user }: { user: User }) {
         updateIntensity();
       }).catch(err => console.error("Mic access denied", err));
     };
+
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
       setIsListening(false);
@@ -308,20 +295,9 @@ export default function Chat({ user }: { user: User }) {
       }
       sendMessage(transcript, true);
     };
-    recognition.onerror = () => {
-      setIsListening(false);
-      if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach(t => t.stop());
-        micStreamRef.current = null;
-      }
-    };
-    recognition.onend = () => {
-      setIsListening(false);
-      if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach(t => t.stop());
-        micStreamRef.current = null;
-      }
-    };
+
+    recognition.onerror = () => { setIsListening(false); stopVoiceMode(); };
+    recognition.onend = () => { setIsListening(false); };
     recognition.start();
   };
 
@@ -329,20 +305,9 @@ export default function Chat({ user }: { user: User }) {
     setIsVoiceMode(false);
     setIsListening(false);
     setIsSpeaking(false);
-    if (recognitionRef.current) {
-      try { recognitionRef.current.stop(); } catch(e) {}
-    }
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach(t => t.stop());
-      micStreamRef.current = null;
-    }
-    if (audioRef.current) {
-      try {
-        audioRef.current.pause();
-        audioRef.current.currentTime = 0;
-        audioRef.current = null;
-      } catch(e) {}
-    }
+    if (recognitionRef.current) { try { recognitionRef.current.stop(); } catch(e) {} }
+    if (micStreamRef.current) { micStreamRef.current.getTracks().forEach(t => t.stop()); micStreamRef.current = null; }
+    if (currentSourceRef.current) { try { currentSourceRef.current.stop(); currentSourceRef.current = null; } catch(e) {} }
     intensityRef.current = 0;
     if (analyzeReqRef.current) cancelAnimationFrame(analyzeReqRef.current);
   };
@@ -352,29 +317,22 @@ export default function Chat({ user }: { user: User }) {
     const text = input;
     if (!text.trim()) return;
     setInput("");
-    
-    // Resume context early on user gesture
-    if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
-      audioCtxRef.current.resume();
-    }
-    
+    initAudioCtx(); // Wake up
     await sendMessage(text);
   };
 
   const handleDeleteConversation = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("¿Estás seguro de que quieres borrar esta conversación?")) return;
+    if (!confirm("¿Borrar esta conversación?")) return;
     try {
       await deleteDoc(doc(db, "users", user.uid, "conversations", id));
       setConversations(prev => prev.filter(c => c.id !== id));
       if (currentConversationId === id) setCurrentConversationId(null);
-    } catch (err) {
-      console.error("Error al borrar:", err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const handleClearHistory = async () => {
-    if (!confirm("¿Estás seguro de que quieres borrar TODO el historial? Esta acción no se puede deshacer.")) return;
+    if (!confirm("¿Borrar TODO el historial?")) return;
     try {
       const ref = collection(db, "users", user.uid, "conversations");
       const snapshot = await getDocs(ref);
@@ -382,9 +340,7 @@ export default function Chat({ user }: { user: User }) {
       await Promise.all(batch);
       setConversations([]);
       setCurrentConversationId(null);
-    } catch (err) {
-      console.error("Error al limpiar historial:", err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   return (
@@ -402,13 +358,12 @@ export default function Chat({ user }: { user: User }) {
         />
 
         <main className="flex-1 flex flex-col relative h-full overflow-hidden bg-zinc-950">
-          {/* Particles Voice Mode Overlay */}
           <div className={`absolute inset-0 transition-opacity duration-700 bg-zinc-950 z-[100] ${isVoiceMode ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
              {isVoiceMode && <ParticleFlower intensityRef={intensityRef} />}
              <div className="absolute inset-x-0 bottom-0 flex flex-col items-center justify-end pb-24 md:pb-32 h-full pointer-events-none">
                 <div className="text-center space-y-8 z-10 px-4 pointer-events-auto">
                   <p className="text-white/40 text-lg md:text-xl font-light tracking-wide italic">
-                    {isLoading ? "Pensando..." : "Modo Voz Activado"}
+                    {isLoading ? "Alexandría está pensando..." : isListening ? "Escuchándote..." : isSpeaking ? "Alexandría te responde..." : "Modo Voz Activado"}
                   </p>
                   <Button 
                     onClick={stopVoiceMode}
@@ -425,67 +380,37 @@ export default function Chat({ user }: { user: User }) {
             <div className="max-w-4xl mx-auto space-y-6 pb-36">
               {messages.map((msg, idx) => (
                 <div key={idx} className={`flex flex-col gap-3 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                  {/* Mensaje de Texto (Premium Glassmorphism) */}
                   <div className={`p-5 rounded-2xl whitespace-pre-wrap max-w-[85%] md:max-w-[75%] shadow-sm ${
-                    msg.role === 'user' 
-                      ? 'bg-[#80E0BE] text-black font-semibold' 
-                      : 'bg-white/5 text-gray-200 border border-white/10 backdrop-blur-md'
+                    msg.role === 'user' ? 'bg-[#80E0BE] text-black font-semibold' : 'bg-zinc-900/50 text-gray-200 border border-white/10 backdrop-blur-md'
                   }`}>
                     {msg.content}
                   </div>
                   
-                  {/* Visualización Anti-Distorsión (Modo Galería) */}
                   {msg.visualization && (
-                    <div className="w-full max-w-2xl mt-2 group relative overflow-hidden rounded-2xl border border-white/10 shadow-2xl transition-all duration-500 hover:border-[#80E0BE]/30">
-                       <div className="aspect-video w-full bg-black/40 flex items-center justify-center overflow-hidden backdrop-blur-sm">
-                         <img 
-                            src={msg.visualization} 
-                            alt="Visualización educativa" 
-                            className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-105 p-2"
-                            onError={(e) => {
-                                (e.target as HTMLImageElement).style.display = 'none';
-                            }}
-                         />
-                         {/* Info Overlay */}
-                         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-5 flex items-end justify-between">
-                            <span className="text-white/80 text-xs font-light tracking-widest uppercase">Ilustración Educativa HQ</span>
-                            <span className="text-[#80E0BE]/60 text-[10px] font-medium uppercase tracking-widest">Alexandr.ia AI</span>
-                         </div>
-                       </div>
+                    <div className="w-full max-w-2xl mt-2 overflow-hidden rounded-2xl border border-white/10 shadow-2xl">
+                       <img src={msg.visualization} className="w-full h-auto object-contain" onError={(e) => (e.currentTarget.style.display='none')}/>
                     </div>
                   )}
 
-                  {/* Botón de Voz Mejorado */}
                   {msg.role === 'assistant' && (
-                    <Button 
-                      onClick={() => speakWithElevenLabs(msg.content)}
-                      disabled={isSpeaking}
-                      variant="ghost" 
-                      size="sm" 
-                      className={`text-white/20 hover:text-[#80E0BE] h-9 px-5 rounded-full flex items-center gap-3 transition-all mt-1 bg-white/5 hover:bg-white/10 border border-transparent hover:border-white/5 group ${isSpeaking ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    >
-                      <Volume2 size={16} className="stroke-[1.5] group-hover:animate-pulse" />
+                    <Button onClick={() => speakWithElevenLabs(msg.content)} disabled={isSpeaking} variant="ghost" size="sm" className="text-white/20 hover:text-[#80E0BE] h-9 px-5 rounded-full flex items-center gap-3 bg-white/5 mt-1 transition-all">
+                      <Volume2 size={16}/>
                       <span className="text-[11px] uppercase tracking-widest font-bold">Escuchar Lección</span>
                     </Button>
                   )}
                 </div>
               ))}
-              {isLoading && <div className="p-4 bg-white/5 rounded-xl animate-pulse text-white/50 text-sm">Alexandría está pensando...</div>}
+              {isLoading && !isVoiceMode && <div className="p-4 bg-white/5 rounded-xl animate-pulse text-white/50 text-sm">Pensando...</div>}
               <div ref={messagesEndRef} />
             </div>
           </div>
 
           <div className="absolute bottom-0 left-0 right-0 p-4 bg-zinc-950/80 backdrop-blur-md z-20">
             <form onSubmit={handleSend} className="max-w-4xl mx-auto flex gap-2">
-              <Button type="button" onClick={startListening} variant="outline" className={`rounded-full w-12 h-12 p-0 border-white/10 transition-colors ${isListening ? 'bg-[#80E0BE] text-black' : 'hover:bg-[#80E0BE] hover:text-black'}`}>
+              <Button type="button" onClick={startListening} variant="outline" className={`rounded-full w-12 h-12 p-0 border-white/10 ${isListening ? 'bg-[#80E0BE] text-black' : 'hover:bg-[#80E0BE] text-white'}`}>
                 <Mic size={24} />
               </Button>
-              <Input 
-                value={input} 
-                onChange={(e) => setInput(e.target.value)} 
-                placeholder="Pregunta a Alexandr.ia..." 
-                className="flex-1 bg-white/5 rounded-full border-none focus-visible:ring-1 focus-visible:ring-[#80E0BE]/50 text-white"
-              />
+              <Input value={input} onChange={(e) => setInput(e.target.value)} placeholder="Pregunta a Alexandr.ia..." className="flex-1 bg-white/5 rounded-full border-none focus-visible:ring-1 focus-visible:ring-[#80E0BE]/50 text-white"/>
               <Button type="submit" className="bg-[#80E0BE] text-black rounded-full w-12 h-12 p-0 hover:bg-[#60c09e]">
                 <Send size={24} />
               </Button>
