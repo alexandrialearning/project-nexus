@@ -3,7 +3,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Menu, Loader2, Mic, MicOff, Volume2, MessageCircle } from "lucide-react";
+import { Send, Menu, Loader2, Mic, MicOff, Volume2, MessageCircle, AlertCircle } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
 import { User } from "firebase/auth";
 import {
@@ -18,7 +18,7 @@ type Message = {
   visualization?: string; 
 };
 
-// Intentar obtener de variables de entorno, si no, avisar en consola
+// Intentar obtener de variables de entorno (Vite)
 const ELEVENLABS_API_KEY = import.meta.env.VITE_ELEVENLABS_API_KEY;
 const ELEVENLABS_VOICE_ID = import.meta.env.VITE_ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM";
 
@@ -32,6 +32,8 @@ export default function Chat({ user }: { user: User }) {
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [audioError, setAudioError] = useState<string | null>(null);
+  
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
   
@@ -101,6 +103,21 @@ export default function Chat({ user }: { user: User }) {
     return audioCtxRef.current;
   }, []);
 
+  // Sonido de sistema para "abrir" el canal auditivo - Esencial para móviles/Safari
+  const playSystemSound = useCallback(() => {
+    const ctx = initAudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(440, ctx.currentTime);
+    gain.gain.setValueAtTime(0.01, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.1);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.1);
+  }, [initAudioCtx]);
+
   const saveMessage = async (role: string, content: string, explicitConvId?: string | null, visualization?: string) => {
     try {
       let convId = explicitConvId || currentConversationId;
@@ -154,7 +171,7 @@ export default function Chat({ user }: { user: User }) {
 
     } catch (error: any) {
       console.error("❌ FALLO:", error);
-      setMessages(prev => [...prev, { role: "assistant", content: `❌ ERROR: ${error.message}` }]);
+      setMessages(prev => [...prev, { role: "assistant", content: `❌ Error: ${error.message}` }]);
     } finally {
       setIsLoading(false);
     }
@@ -174,11 +191,13 @@ export default function Chat({ user }: { user: User }) {
 
   const speakWithElevenLabs = useCallback(async (text: string) => {
     if (!ELEVENLABS_API_KEY) {
-      console.error("ElevenLabs API Key is missing! Check your .env file or VITE variables.");
+      setAudioError("Error: API Key de ElevenLabs no encontrada. Verifica el archivo .env.");
       return;
     }
 
     const ctx = initAudioCtx();
+    setAudioError(null);
+
     if (isSpeaking) {
         if (currentSourceRef.current) {
             currentSourceRef.current.stop();
@@ -202,7 +221,7 @@ export default function Chat({ user }: { user: User }) {
       
       if (!response.ok) {
           const errData = await response.json().catch(() => ({}));
-          throw new Error(errData.detail?.status || "API failure");
+          throw new Error(errData.detail?.status || `Error ElevenLabs (${response.status})`);
       }
       
       const audioData = await response.arrayBuffer();
@@ -243,8 +262,9 @@ export default function Chat({ user }: { user: User }) {
       updateIntensity();
       source.start(0);
 
-    } catch (err) { 
+    } catch (err: any) { 
       console.error("ElevenLabs Error:", err);
+      setAudioError(`API Error: ${err.message}`);
       setIsSpeaking(false);
       setIsVoiceMode(false);
     }
@@ -254,7 +274,7 @@ export default function Chat({ user }: { user: User }) {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
     
-    initAudioCtx(); // Wake up on user interaction
+    playSystemSound(); // Abrir canal de audio con un sonido rápido
     setIsVoiceMode(true);
     
     const recognition = new SpeechRecognition();
@@ -302,6 +322,7 @@ export default function Chat({ user }: { user: User }) {
   };
 
   const stopVoiceMode = () => {
+    setAudioError(null);
     setIsVoiceMode(false);
     setIsListening(false);
     setIsSpeaking(false);
@@ -317,7 +338,7 @@ export default function Chat({ user }: { user: User }) {
     const text = input;
     if (!text.trim()) return;
     setInput("");
-    initAudioCtx(); // Wake up
+    playSystemSound(); // Abrir canal
     await sendMessage(text);
   };
 
@@ -362,8 +383,14 @@ export default function Chat({ user }: { user: User }) {
              {isVoiceMode && <ParticleFlower intensityRef={intensityRef} />}
              <div className="absolute inset-x-0 bottom-0 flex flex-col items-center justify-end pb-24 md:pb-32 h-full pointer-events-none">
                 <div className="text-center space-y-8 z-10 px-4 pointer-events-auto">
+                    {audioError && (
+                        <div className="flex items-center gap-2 bg-red-500/20 text-red-400 px-4 py-2 rounded-lg border border-red-500/30 animate-bounce">
+                           <AlertCircle size={18}/>
+                           <span className="text-xs font-bold uppercase tracking-wider">{audioError}</span>
+                        </div>
+                    )}
                   <p className="text-white/40 text-lg md:text-xl font-light tracking-wide italic">
-                    {isLoading ? "Alexandría está pensando..." : isListening ? "Escuchándote..." : isSpeaking ? "Alexandría te responde..." : "Modo Voz Activado"}
+                    {isLoading ? "Alexandría está pensando..." : isListening ? "Escuchándote..." : isSpeaking ? "Escuchando respuesta..." : "Modo Voz Activado"}
                   </p>
                   <Button 
                     onClick={stopVoiceMode}
