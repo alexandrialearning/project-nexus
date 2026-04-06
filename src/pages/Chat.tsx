@@ -394,46 +394,47 @@ export default function Chat({ user }: { user: User }) {
             <div className="max-w-4xl mx-auto space-y-6 pb-36">
               {messages.map((msg, idx) => (
                 <div key={idx} className={`flex flex-col gap-3 ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-                  {/* Contenedor de Texto */}
+                  {/* Mensaje de Texto (Premium Glassmorphism) */}
                   <div className={`p-5 rounded-2xl whitespace-pre-wrap max-w-[85%] md:max-w-[75%] shadow-sm ${
                     msg.role === 'user' 
-                      ? 'bg-[#80E0BE] text-black font-medium' 
-                      : 'bg-white/5 text-gray-200 border border-white/10 backdrop-blur-sm'
+                      ? 'bg-[#80E0BE] text-black font-semibold' 
+                      : 'bg-white/5 text-gray-200 border border-white/10 backdrop-blur-md'
                   }`}>
                     {msg.content}
                   </div>
                   
-                  {/* Visualización Premium (Debajo del texto) */}
+                  {/* Visualización Anti-Distorsión (Modo Galería) */}
                   {msg.visualization && (
-                    <div className="w-full max-w-2xl mt-2 group relative overflow-hidden rounded-2xl border border-white/10 shadow-2xl transition-all hover:scale-[1.01]">
-                       <div className="aspect-video w-full bg-zinc-900 flex items-center justify-center overflow-hidden">
+                    <div className="w-full max-w-2xl mt-2 group relative overflow-hidden rounded-2xl border border-white/10 shadow-2xl transition-all duration-500 hover:border-[#80E0BE]/30">
+                       <div className="aspect-video w-full bg-black/40 flex items-center justify-center overflow-hidden backdrop-blur-sm">
                          <img 
                             src={msg.visualization} 
                             alt="Visualización educativa" 
-                            className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+                            className="w-full h-full object-contain transition-transform duration-700 group-hover:scale-105 p-2"
                             onError={(e) => {
                                 (e.target as HTMLImageElement).style.display = 'none';
                             }}
                          />
-                         {/* Overlay de calidad */}
-                         <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-4 flex items-end">
+                         {/* Info Overlay */}
+                         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity p-5 flex items-end justify-between">
                             <span className="text-white/80 text-xs font-light tracking-widest uppercase">Ilustración Educativa HQ</span>
+                            <span className="text-[#80E0BE]/60 text-[10px] font-medium uppercase tracking-widest">Alexandr.ia AI</span>
                          </div>
                        </div>
                     </div>
                   )}
 
-                  {/* Botón de Voz */}
+                  {/* Botón de Voz Mejorado */}
                   {msg.role === 'assistant' && (
                     <Button 
                       onClick={() => speakWithElevenLabs(msg.content)}
                       disabled={isSpeaking}
                       variant="ghost" 
                       size="sm" 
-                      className={`text-white/20 hover:text-[#80E0BE] h-8 px-4 rounded-full flex items-center gap-2 transition-all mt-1 bg-white/5 hover:bg-white/10 border border-transparent hover:border-white/5 ${isSpeaking ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className={`text-white/20 hover:text-[#80E0BE] h-9 px-5 rounded-full flex items-center gap-3 transition-all mt-1 bg-white/5 hover:bg-white/10 border border-transparent hover:border-white/5 group ${isSpeaking ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                      <Volume2 size={16} className="stroke-[1.5]" />
-                      <span className="text-[11px] uppercase tracking-widest font-medium">Escuchar Explicación</span>
+                      <Volume2 size={16} className="stroke-[1.5] group-hover:animate-pulse" />
+                      <span className="text-[11px] uppercase tracking-widest font-bold">Escuchar Lección</span>
                     </Button>
                   )}
                 </div>
