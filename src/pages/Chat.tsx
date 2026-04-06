@@ -157,18 +157,46 @@ export default function Chat({ user }: { user: User }) {
     }
   };
 
+  const stripMarkdown = (text: string) => {
+    return text
+      .replace(/(\*\*|__)(.*?)\1/g, '$2') // bold
+      .replace(/(\*|_)(.*?)\1/g, '$2')    // italic
+      .replace(/\[(.*?)\]\(.*?\)/g, '$1') // links
+      .replace(/#{1,6}\s*(.*)/g, '$1')    // headers
+      .replace(/`{1,3}.*?`{1,3}/gs, '')   // inline code & code blocks
+      .replace(/>\s*(.*)/g, '$1')         // quotes
+      .replace(/[-*+]\s+(.*)/g, '$1')     // bullets
+      .replace(/\n+/g, ' ');              // newlines to spaces
+  };
+
   const speakWithElevenLabs = useCallback(async (text: string) => {
     if (!ELEVENLABS_API_KEY) {
       console.warn("ElevenLabs API Key missing");
       return;
     }
-    if (isSpeaking) return; // Prevent multiple overlaps
+    if (isSpeaking) return;
+    
+    // Ensure/Resume Audio Context
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    const ctx = audioCtxRef.current;
+    if (ctx.state === 'suspended') {
+      await ctx.resume();
+    }
+
     setIsSpeaking(true);
+    const cleanedText = stripMarkdown(text);
+
     try {
       const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${ELEVENLABS_VOICE_ID}/stream`, {
         method: "POST",
         headers: { "xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json" },
-        body: JSON.stringify({ text, model_id: "eleven_multilingual_v2" }),
+        body: JSON.stringify({ 
+          text: cleanedText, 
+          model_id: "eleven_multilingual_v2",
+          voice_settings: { stability: 0.5, similarity_boost: 0.75 }
+        }),
       });
       
       if (!response.ok) throw new Error("ElevenLabs API failure");
@@ -178,12 +206,6 @@ export default function Chat({ user }: { user: User }) {
       const audio = new Audio(url);
       audio.crossOrigin = "anonymous";
       audioRef.current = audio;
-
-      if (!audioCtxRef.current) {
-        audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-      }
-      const ctx = audioCtxRef.current;
-      if (ctx.state === 'suspended') await ctx.resume();
 
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
@@ -197,20 +219,17 @@ export default function Chat({ user }: { user: User }) {
       const dataArray = new Uint8Array(bufferLength);
 
       const updateIntensity = () => {
-        if (!analyserRef.current) return;
+        if (!analyserRef.current || audio.paused || audio.ended) {
+          intensityRef.current = 0;
+          return;
+        }
         analyser.getByteFrequencyData(dataArray);
         let sum = 0;
         for (let i = 0; i < bufferLength; i++) sum += dataArray[i];
         const average = sum / bufferLength;
-        // Non-linear boost for more drama
         const norm = average / 100;
         intensityRef.current = Math.min(1.5, Math.pow(norm, 1.2) * 2); 
-        
-        if (!audio.paused && !audio.ended) {
-          analyzeReqRef.current = requestAnimationFrame(updateIntensity);
-        } else {
-          intensityRef.current = 0;
-        }
+        analyzeReqRef.current = requestAnimationFrame(updateIntensity);
       };
 
       audio.onplay = () => {
@@ -225,18 +244,32 @@ export default function Chat({ user }: { user: User }) {
         if (analyzeReqRef.current) cancelAnimationFrame(analyzeReqRef.current);
       };
       
-      await audio.play();
+      try {
+        await audio.play();
+      } catch (err) {
+        console.error("Audio playback failed", err);
+        setIsSpeaking(false);
+        setIsVoiceMode(false);
+      }
     } catch (err) { 
       console.error("ElevenLabs Error:", err);
       setIsSpeaking(false);
       setIsVoiceMode(false);
     }
-  }, []);
+  }, [isSpeaking]);
 
   const startListening = async () => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (!SpeechRecognition) return;
     
+    // Resume context early on user gesture
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+    }
+    if (audioCtxRef.current.state === 'suspended') {
+      await audioCtxRef.current.resume();
+    }
+
     setIsVoiceMode(true);
     const recognition = new SpeechRecognition();
     recognitionRef.current = recognition;
@@ -246,9 +279,6 @@ export default function Chat({ user }: { user: User }) {
       // Mic visualization
       navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
         micStreamRef.current = stream;
-        if (!audioCtxRef.current) {
-          audioCtxRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
-        }
         const ctx = audioCtxRef.current;
         const source = ctx.createMediaStreamSource(stream);
         const analyser = ctx.createAnalyser();
@@ -272,7 +302,6 @@ export default function Chat({ user }: { user: User }) {
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
       setIsListening(false);
-      // Removed setIsVoiceMode(false) - let it stay until speaker finishes
       if (micStreamRef.current) {
         micStreamRef.current.getTracks().forEach(t => t.stop());
         micStreamRef.current = null;
@@ -281,7 +310,6 @@ export default function Chat({ user }: { user: User }) {
     };
     recognition.onerror = () => {
       setIsListening(false);
-      // setIsVoiceMode(false) - only close via button or on end speak
       if (micStreamRef.current) {
         micStreamRef.current.getTracks().forEach(t => t.stop());
         micStreamRef.current = null;
@@ -289,7 +317,6 @@ export default function Chat({ user }: { user: User }) {
     };
     recognition.onend = () => {
       setIsListening(false);
-      // setIsVoiceMode(false) - stay active
       if (micStreamRef.current) {
         micStreamRef.current.getTracks().forEach(t => t.stop());
         micStreamRef.current = null;
@@ -320,13 +347,17 @@ export default function Chat({ user }: { user: User }) {
     if (analyzeReqRef.current) cancelAnimationFrame(analyzeReqRef.current);
   };
 
-  const stopListening = () => { setIsListening(false); };
-  const stopSpeaking = () => { setIsSpeaking(false); };
-
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
     const text = input;
+    if (!text.trim()) return;
     setInput("");
+    
+    // Resume context early on user gesture
+    if (audioCtxRef.current && audioCtxRef.current.state === 'suspended') {
+      audioCtxRef.current.resume();
+    }
+    
     await sendMessage(text);
   };
 
