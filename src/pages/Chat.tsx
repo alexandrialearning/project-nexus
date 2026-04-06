@@ -18,8 +18,8 @@ type Message = {
   visualization?: string; 
 };
 
-// Intentar obtener de variables de entorno (Vite)
-const ELEVENLABS_API_KEY = import.meta.env.VITE_ELEVENLABS_API_KEY;
+// Llave de API hardcoded como fallback para asegurar funcionamiento en despliegue
+const ELEVENLABS_API_KEY = import.meta.env.VITE_ELEVENLABS_API_KEY || "594495319cc603361333b6b01e92635541fa4224983a874946ae38d85bd567dd";
 const ELEVENLABS_VOICE_ID = import.meta.env.VITE_ELEVENLABS_VOICE_ID || "21m00Tcm4TlvDq8ikWAM";
 
 import ParticleFlower from "@/components/ParticleFlower";
