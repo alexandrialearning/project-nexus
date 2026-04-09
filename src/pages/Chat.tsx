@@ -48,7 +48,7 @@ export default function Chat({ user }: { user: User }) {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [temario, setTemario] = useState<{ temario: string; archivos: { nombre: string; archivo: string; url: string }[] } | null>(null);
 
-  const MASTER_API_URL = "https://alexandria-v2-master-736878482690.us-central1.run.app";
+  const MASTER_API_URL = import.meta.env.VITE_API_URL || "https://alexandria-v2-master-736878482690.us-central1.run.app";
 
   useEffect(() => {
     fetch(`${MASTER_API_URL}/temario`)
