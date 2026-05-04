@@ -3,7 +3,7 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Menu, Loader2, Mic, MicOff, Volume2, MessageCircle, AlertCircle } from "lucide-react";
+import { Send, Menu, Loader2, Mic, MicOff, Volume2, MessageCircle, AlertCircle, Settings, Sliders } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
 import { User } from "firebase/auth";
 import {
@@ -33,6 +33,8 @@ export default function Chat({ user }: { user: User }) {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [audioError, setAudioError] = useState<string | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [maxTokens, setMaxTokens] = useState(1500);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const recognitionRef = useRef<any>(null);
@@ -46,16 +48,18 @@ export default function Chat({ user }: { user: User }) {
 
   const [conversations, setConversations] = useState<{ id: string, title: string, timestamp: any }[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-  const [temario, setTemario] = useState<{ temario: string; archivos: { nombre: string; archivo: string; url: string }[] } | null>(null);
+  const [assignedSyllabi, setAssignedSyllabi] = useState<string[]>([]);
 
-  const MASTER_API_URL = import.meta.env.VITE_API_URL || "https://alexandria-v2-master-736878482690.us-central1.run.app";
+  const MASTER_API_URL = "https://alexandria-v2-master-736878482690.us-central1.run.app";
 
   useEffect(() => {
-    fetch(`${MASTER_API_URL}/temario`)
-      .then(r => r.ok ? r.json() : null)
-      .then(data => { if (data) setTemario(data); })
-      .catch(() => {});
-  }, []);
+    if (user?.email) {
+      fetch(`${MASTER_API_URL}/user/syllabus/${user.email}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data && data.temario) setAssignedSyllabi(data.temario); })
+        .catch(() => {});
+    }
+  }, [user]);
 
   useEffect(() => {
     const loadConvos = async () => {
@@ -156,7 +160,8 @@ export default function Chat({ user }: { user: User }) {
           user_id: user.email || "anonymous",
           user_question: messageText,
           alexandria_type_learning: parseInt(learningType),
-          temario_prefix: temario?.temario ? `${temario.temario}/` : null
+          temario_prefix: null, // Ignorado ahora que el backend usa Firestore
+          max_tokens: maxTokens
         })
       });
 
@@ -375,10 +380,58 @@ export default function Chat({ user }: { user: User }) {
           onSelectConversation={setCurrentConversationId}
           onNewConversation={() => setCurrentConversationId(null)}
           onDeleteConversation={handleDeleteConversation}
-          temario={temario}
+          assignedSyllabi={assignedSyllabi}
         />
 
         <main className="flex-1 flex flex-col relative h-full overflow-hidden bg-zinc-950">
+          {/* Botones de Control (Top Bar) */}
+          <div className="absolute top-4 left-4 z-50">
+            <SidebarTrigger className="text-white/50 hover:text-white bg-white/5 hover:bg-white/10 border-white/10" />
+          </div>
+
+          <div className="absolute top-4 right-4 z-[110]">
+            <div className="relative">
+              <Button 
+                onClick={() => setShowSettings(!showSettings)}
+                variant="ghost" 
+                size="icon" 
+                className="rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-[#80E0BE] shadow-xl backdrop-blur-md"
+              >
+                <Settings size={20} className={showSettings ? "animate-spin-slow rotate-90" : ""} />
+              </Button>
+
+              {showSettings && (
+                <div className="absolute top-12 right-0 w-64 p-5 bg-zinc-900/95 backdrop-blur-2xl border border-white/20 rounded-2xl shadow-[0_0_50px_-12px_rgba(128,224,190,0.3)] z-[111] animate-in fade-in zoom-in-95 duration-200">
+                  <div className="flex items-center gap-2 mb-4 text-[#80E0BE]">
+                    <Sliders size={14} />
+                    <span className="text-[10px] font-bold uppercase tracking-widest">Ajustes de IA</span>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <div className="flex justify-between mb-2">
+                        <label className="text-[10px] text-white/40 uppercase tracking-tighter">Límite de Tokens</label>
+                        <span className="text-[10px] font-mono text-[#80E0BE] font-bold">{maxTokens}</span>
+                      </div>
+                      <input 
+                        type="range" 
+                        min="100" 
+                        max="2048" 
+                        step="50"
+                        value={maxTokens} 
+                        onChange={(e) => setMaxTokens(parseInt(e.target.value))}
+                        className="w-full h-1.5 bg-white/10 rounded-lg appearance-none cursor-pointer accent-[#80E0BE]"
+                      />
+                      <p className="mt-2 text-[9px] text-white/20 italic leading-snug">
+                        Valores bajos dan respuestas rápidas. Valores altos permiten lecciones extensas.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+
           <div className={`absolute inset-0 transition-opacity duration-700 bg-zinc-950 z-[100] ${isVoiceMode ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}>
              {isVoiceMode && <ParticleFlower intensityRef={intensityRef} />}
              <div className="absolute inset-x-0 bottom-0 flex flex-col items-center justify-end pb-24 md:pb-32 h-full pointer-events-none">

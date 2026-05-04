@@ -24,6 +24,13 @@ import {
   SidebarMenuItem,
   SidebarSeparator,
 } from "@/components/ui/sidebar"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
 
@@ -35,7 +42,7 @@ export function AppSidebar({
   onSelectConversation,
   onNewConversation,
   onDeleteConversation,
-  temario
+  assignedSyllabi
 }: any) {
   const handleLogout = () => {
     signOut(auth);
@@ -84,34 +91,25 @@ export function AppSidebar({
 
         <SidebarSeparator className="bg-white/5 mx-4" />
 
-        {/* ── Mi Temario ──────────────────────────────────────────────── */}
-        {temario && (
+        {/* ── Mis Recursos Asignados ────────────────────────────────── */}
+        {assignedSyllabi && assignedSyllabi.length > 0 && (
           <SidebarGroup>
             <SidebarGroupLabel className="text-gray-500 uppercase text-[10px] tracking-widest px-4 pt-2 pb-2 flex items-center gap-1.5">
               <BookOpen className="w-3 h-3" />
-              {temario.temario}
+              Syllabus Escolar
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {temario.archivos.length === 0 ? (
-                  <SidebarMenuItem>
-                    <span className="px-4 text-xs text-zinc-600 italic">Sin documentos asignados</span>
+                {assignedSyllabi.map((s: string, idx: number) => (
+                  <SidebarMenuItem key={idx}>
+                    <SidebarMenuButton className="text-[#80E0BE] hover:bg-white/5 h-12 border border-[#80E0BE]/20 rounded-xl px-4 group mb-2 cursor-default">
+                      <div className="flex flex-col items-start overflow-hidden">
+                        <span className="text-[10px] text-white/30 uppercase font-mono group-hover:text-[#80E0BE]/50 transition-colors">Recurso Asignado</span>
+                        <span className="font-bold text-sm truncate w-full">{s.replace(/_/g, " ")}</span>
+                      </div>
+                    </SidebarMenuButton>
                   </SidebarMenuItem>
-                ) : (
-                  temario.archivos.map((archivo: any) => (
-                    <SidebarMenuItem key={archivo.archivo}>
-                      <SidebarMenuButton
-                        asChild
-                        className="text-zinc-400 hover:text-[#80E0BE] hover:bg-white/5 text-xs"
-                      >
-                        <a href={archivo.url} target="_blank" rel="noopener noreferrer" title={archivo.nombre}>
-                          <FileText className="w-3.5 h-3.5 shrink-0" />
-                          <span className="truncate">{archivo.nombre}</span>
-                        </a>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))
-                )}
+                ))}
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
