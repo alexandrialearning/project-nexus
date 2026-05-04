@@ -48,7 +48,7 @@ export default function Chat({ user }: { user: User }) {
 
   const [conversations, setConversations] = useState<{ id: string, title: string, timestamp: any }[]>([]);
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-  const [assignedSyllabi, setAssignedSyllabi] = useState<string[]>([]);
+  const [assignedSyllabi, setAssignedSyllabi] = useState<any[]>([]);
 
   const MASTER_API_URL = "https://alexandria-v2-master-736878482690.us-central1.run.app";
 
@@ -56,7 +56,7 @@ export default function Chat({ user }: { user: User }) {
     if (user?.email) {
       fetch(`${MASTER_API_URL}/user/syllabus/${user.email}`)
         .then(r => r.ok ? r.json() : null)
-        .then(data => { if (data && data.temario) setAssignedSyllabi(data.temario); })
+        .then(data => { if (data && data.temarios) setAssignedSyllabi(data.temarios); })
         .catch(() => {});
     }
   }, [user]);

@@ -100,14 +100,46 @@ export function AppSidebar({
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {assignedSyllabi.map((s: string, idx: number) => (
+                {assignedSyllabi.map((s: any, idx: number) => (
                   <SidebarMenuItem key={idx}>
-                    <SidebarMenuButton className="text-[#80E0BE] hover:bg-white/5 h-12 border border-[#80E0BE]/20 rounded-xl px-4 group mb-2 cursor-default">
-                      <div className="flex flex-col items-start overflow-hidden">
-                        <span className="text-[10px] text-white/30 uppercase font-mono group-hover:text-[#80E0BE]/50 transition-colors">Recurso Asignado</span>
-                        <span className="font-bold text-sm truncate w-full">{s.replace(/_/g, " ")}</span>
-                      </div>
-                    </SidebarMenuButton>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <SidebarMenuButton className="text-[#80E0BE] hover:bg-white/5 h-12 border border-[#80E0BE]/20 rounded-xl px-4 group mb-2 cursor-pointer transition-all">
+                          <div className="flex flex-col items-start overflow-hidden">
+                            <span className="text-[10px] text-white/30 uppercase font-mono group-hover:text-[#80E0BE]/50 transition-colors">Recurso Asignado</span>
+                            <span className="font-bold text-sm truncate w-full">{s.temario.replace(/_/g, " ")}</span>
+                          </div>
+                        </SidebarMenuButton>
+                      </DialogTrigger>
+                      
+                      <DialogContent className="bg-zinc-950 border-white/10 text-white max-w-2xl max-h-[80vh] overflow-y-auto backdrop-blur-xl" style={{ zIndex: 9999 }}>
+                        <DialogHeader className="border-b border-white/5 pb-4 mb-4">
+                          <DialogTitle className="text-[#80E0BE] flex items-center gap-2">
+                            <BookOpen className="w-5 h-5" />
+                            Contenido Educativo: {s.temario.replace(/_/g, " ")}
+                          </DialogTitle>
+                        </DialogHeader>
+                        
+                        <div className="grid gap-4">
+                          {s.archivos && s.archivos.map((archivo: any) => (
+                             <div key={archivo.archivo} className="p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-[#80E0BE]/30 transition-all flex items-center gap-4">
+                                <div className="p-3 rounded-lg bg-[#80E0BE]/10 text-[#80E0BE]">
+                                  <FileText size={24} />
+                                </div>
+                                <div>
+                                  <h4 className="font-bold text-sm text-white/90">{archivo.nombre}</h4>
+                                  <p className="text-xs text-white/50 leading-relaxed italic mt-1">
+                                    Documento oficial asignado a tu perfil escolar para consultas.
+                                  </p>
+                                </div>
+                             </div>
+                          ))}
+                          {(!s.archivos || s.archivos.length === 0) && (
+                            <p className="text-sm text-white/50 italic p-4 text-center">No hay libros PDF en esta carpeta de Google Cloud.</p>
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
