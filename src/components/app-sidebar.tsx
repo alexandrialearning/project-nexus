@@ -9,7 +9,8 @@ import {
   MessageSquare,
   BookOpen,
   FileText,
-  RefreshCw
+  RefreshCw,
+  AlertCircle
 } from "lucide-react"
 
 import {
