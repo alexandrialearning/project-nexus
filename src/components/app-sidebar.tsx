@@ -8,7 +8,8 @@ import {
   PlusCircle,
   MessageSquare,
   BookOpen,
-  FileText
+  FileText,
+  RefreshCw
 } from "lucide-react"
 
 import {
@@ -42,7 +43,9 @@ export function AppSidebar({
   onSelectConversation,
   onNewConversation,
   onDeleteConversation,
-  assignedSyllabi
+  assignedSyllabi,
+  userEmail,
+  MASTER_API_URL
 }: any) {
   const handleLogout = () => {
     signOut(auth);
@@ -91,61 +94,106 @@ export function AppSidebar({
 
         <SidebarSeparator className="bg-white/5 mx-4" />
 
-        {/* ── Mis Recursos Asignados ────────────────────────────────── */}
-        {assignedSyllabi && assignedSyllabi.length > 0 && (
-          <SidebarGroup>
-            <SidebarGroupLabel className="text-gray-500 uppercase text-[10px] tracking-widest px-4 pt-2 pb-2 flex items-center gap-1.5">
-              <BookOpen className="w-3 h-3" />
-              Syllabus Escolar
-            </SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {assignedSyllabi.map((s: any, idx: number) => (
-                  <SidebarMenuItem key={idx}>
+        {/* ── BIBLIOTECA ASIGNADA (MÁS VISIBLE) ───────────────────────── */}
+        <SidebarGroup>
+          <SidebarGroupLabel className="text-[#80E0BE] uppercase text-[10px] font-bold tracking-[0.2em] px-4 pt-4 pb-2 flex items-center gap-2">
+            <BookOpen className="w-3.5 h-3.5" />
+            Biblioteca Asignada
+          </SidebarGroupLabel>
+          <SidebarGroupContent className="px-2">
+            <SidebarMenu>
+              {assignedSyllabi && assignedSyllabi.length > 0 ? (
+                assignedSyllabi.map((s: any, idx: number) => (
+                  <SidebarMenuItem key={idx} className="mb-2">
                     <Dialog>
                       <DialogTrigger asChild>
-                        <SidebarMenuButton className="text-[#80E0BE] hover:bg-white/5 h-12 border border-[#80E0BE]/20 rounded-xl px-4 group mb-2 cursor-pointer transition-all">
+                        <SidebarMenuButton className="h-16 w-full bg-gradient-to-br from-white/10 to-transparent hover:from-[#80E0BE]/20 border border-white/10 hover:border-[#80E0BE]/40 rounded-2xl px-4 flex items-center gap-3 transition-all group">
+                          <div className="bg-[#80E0BE]/20 p-2 rounded-xl text-[#80E0BE] group-hover:scale-110 transition-transform">
+                            <BookOpen className="w-5 h-5" />
+                          </div>
                           <div className="flex flex-col items-start overflow-hidden">
-                            <span className="text-[10px] text-white/30 uppercase font-mono group-hover:text-[#80E0BE]/50 transition-colors">Recurso Asignado</span>
-                            <span className="font-bold text-sm truncate w-full">{s.temario.replace(/_/g, " ")}</span>
+                            <span className="text-[9px] text-white/40 uppercase tracking-widest font-bold">Ver libros de:</span>
+                            <span className="font-bold text-sm text-white truncate w-full">{s.temario.replace(/_/g, " ")}</span>
                           </div>
                         </SidebarMenuButton>
                       </DialogTrigger>
                       
-                      <DialogContent className="bg-zinc-950 border-white/10 text-white max-w-2xl max-h-[80vh] overflow-y-auto backdrop-blur-xl" style={{ zIndex: 9999 }}>
-                        <DialogHeader className="border-b border-white/5 pb-4 mb-4">
-                          <DialogTitle className="text-[#80E0BE] flex items-center gap-2">
-                            <BookOpen className="w-5 h-5" />
-                            Contenido Educativo: {s.temario.replace(/_/g, " ")}
+                      <DialogContent className="bg-zinc-950 border-white/10 text-white max-w-2xl max-h-[80vh] overflow-y-auto backdrop-blur-xl shadow-[0_0_100px_-20px_rgba(128,224,190,0.2)]">
+                        <DialogHeader className="border-b border-white/5 pb-4 mb-4 flex flex-row items-center justify-between">
+                          <DialogTitle className="text-[#80E0BE] text-xl flex items-center gap-3">
+                            <div className="bg-[#80E0BE]/10 p-2 rounded-lg">
+                              <BookOpen className="w-6 h-6" />
+                            </div>
+                            {s.temario.replace(/_/g, " ")}
                           </DialogTitle>
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (!MASTER_API_URL) return;
+                              try {
+                                const response = await fetch(`${MASTER_API_URL}/user/syllabus/sync`, {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    user_id: userEmail || "anonymous",
+                                    syllabus_prefix: s.temario + "/"
+                                  })
+                                });
+                                const data = await response.json();
+                                alert(data.message || "Sincronización iniciada");
+                              } catch (err) {
+                                alert("Error al sincronizar");
+                              }
+                            }}
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#80E0BE]/10 text-[#80E0BE] hover:bg-[#80E0BE]/20 transition-all text-xs font-bold uppercase tracking-wider"
+                            title="Haz clic aquí después de subir nuevos PDFs para que la IA los pueda leer"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            Sincronizar IA
+                          </button>
                         </DialogHeader>
                         
-                        <div className="grid gap-4">
-                          {s.archivos && s.archivos.map((archivo: any) => (
-                             <div key={archivo.archivo} className="p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-[#80E0BE]/30 transition-all flex items-center gap-4">
-                                <div className="p-3 rounded-lg bg-[#80E0BE]/10 text-[#80E0BE]">
+                        <div className="grid gap-3">
+                          {s.archivos && s.archivos.length > 0 ? (
+                            s.archivos.map((archivo: any) => (
+                              <a 
+                                key={archivo.archivo} 
+                                href={archivo.url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-[#80E0BE]/30 hover:bg-white/10 transition-all flex items-center gap-4 group"
+                              >
+                                <div className="p-3 rounded-xl bg-red-500/10 text-red-400 group-hover:scale-110 transition-transform">
                                   <FileText size={24} />
                                 </div>
-                                <div>
-                                  <h4 className="font-bold text-sm text-white/90">{archivo.nombre}</h4>
-                                  <p className="text-xs text-white/50 leading-relaxed italic mt-1">
-                                    Documento oficial asignado a tu perfil escolar para consultas.
-                                  </p>
+                                <div className="flex-1">
+                                  <h4 className="font-bold text-sm text-white group-hover:text-[#80E0BE] transition-colors">{archivo.nombre}</h4>
+                                  <p className="text-[10px] text-white/40 uppercase tracking-tight mt-1">PDF Asignado • Clic para abrir</p>
                                 </div>
-                             </div>
-                          ))}
-                          {(!s.archivos || s.archivos.length === 0) && (
-                            <p className="text-sm text-white/50 italic p-4 text-center">No hay libros PDF en esta carpeta de Google Cloud.</p>
+                              </a>
+                            ))
+                          ) : (
+                            <div className="text-center py-10 space-y-2">
+                               <AlertCircle className="w-10 h-10 text-white/10 mx-auto" />
+                               <p className="text-sm text-white/50 italic">No se encontraron archivos en este temario.</p>
+                            </div>
                           )}
                         </div>
                       </DialogContent>
                     </Dialog>
                   </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+                ))
+              ) : (
+                <div className="px-4 py-6 border border-dashed border-white/10 rounded-2xl text-center space-y-2 opacity-50">
+                  <p className="text-[10px] text-white/40 uppercase tracking-widest">Buscando recursos...</p>
+                  <div className="h-1 w-20 bg-white/5 mx-auto rounded-full overflow-hidden">
+                    <div className="h-full w-1/2 bg-[#80E0BE] animate-shimmer"></div>
+                  </div>
+                </div>
+              )}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
 
         <SidebarSeparator className="bg-white/5 mx-4" />
 
@@ -154,15 +202,28 @@ export function AppSidebar({
           <SidebarGroupContent>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton className="text-gray-300 hover:text-white">
-                  <BrainCircuit className="w-4 h-4" />
-                  <span>Tipo de Aprendizaje</span>
+                <SidebarMenuButton className="text-gray-300 hover:text-white h-auto py-2 flex-col items-start gap-2">
+                  <div className="flex items-center gap-2 w-full">
+                    <BrainCircuit className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span className="text-xs">Estilo de Aprendizaje</span>
+                  </div>
                   <select
                     onChange={(e) => onLearningChange(e.target.value)}
-                    className="ml-auto bg-transparent text-xs text-amber-400 outline-none border-none cursor-pointer"
+                    className="w-full bg-white/5 text-xs text-amber-400 outline-none border border-white/10 rounded-lg px-2 py-1.5 cursor-pointer"
                   >
-                    <option value="1">Kinestésico</option>
-                    <option value="2">Visual</option>
+                    <option value="auto">🤖 Modo Adaptativo (IA)</option>
+                    <optgroup label="── Percepción Sensorial">
+                      <option value="visual">🖼️ Visual</option>
+                      <option value="auditivo">🎧 Auditivo (Aural)</option>
+                      <option value="lectura_escritura">📝 Lectura/Escritura</option>
+                      <option value="kinestesico">🤸 Kinestésico</option>
+                    </optgroup>
+                    <optgroup label="── Procesamiento Cognitivo">
+                      <option value="activo">⚡ Activo</option>
+                      <option value="reflexivo">🔍 Reflexivo</option>
+                      <option value="teorico">📐 Teórico</option>
+                      <option value="pragmatico">🔧 Pragmático</option>
+                    </optgroup>
                   </select>
                 </SidebarMenuButton>
               </SidebarMenuItem>

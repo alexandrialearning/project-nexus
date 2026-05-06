@@ -16,6 +16,7 @@ type Message = {
   content: string; 
   id?: string; 
   visualization?: string; 
+  learningStyle?: string;
 };
 
 // Llave de API hardcoded como fallback para asegurar funcionamiento en despliegue
@@ -27,7 +28,7 @@ import ParticleFlower from "@/components/ParticleFlower";
 export default function Chat({ user }: { user: User }) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [learningType, setLearningType] = useState("1");
+  const [learningType, setLearningType] = useState("kinestesico");
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -54,7 +55,8 @@ export default function Chat({ user }: { user: User }) {
 
   useEffect(() => {
     if (user?.email) {
-      fetch(`${MASTER_API_URL}/user/syllabus/${user.email}`)
+      const emailLower = user.email.toLowerCase();
+      fetch(`${MASTER_API_URL}/user/syllabus/${emailLower}`)
         .then(r => r.ok ? r.json() : null)
         .then(data => { if (data && data.temarios) setAssignedSyllabi(data.temarios); })
         .catch(() => {});
@@ -88,6 +90,7 @@ export default function Chat({ user }: { user: User }) {
         role: d.data().role,
         content: d.data().content,
         visualization: d.data().visualization,
+        learningStyle: d.data().learning_style,
       }));
       setMessages(loaded);
     });
@@ -136,7 +139,13 @@ export default function Chat({ user }: { user: User }) {
         setConversations(prev => [{ id: convId!, title: fallbackTitle, timestamp: new Date() }, ...prev]);
       }
       const ref = collection(db, "users", user.uid, "conversations", convId!, "messages");
-      const docRef = await addDoc(ref, { role, content, visualization: visualization || null, timestamp: serverTimestamp() });
+      const docRef = await addDoc(ref, { 
+        role, 
+        content, 
+        visualization: visualization || null, 
+        learning_style: learningType === 'auto' ? null : learningType, // Don't save 'auto' as a preference
+        timestamp: serverTimestamp() 
+      });
       return { msgId: docRef.id, convId: convId! };
     } catch (err) { return undefined; }
   };
@@ -153,14 +162,34 @@ export default function Chat({ user }: { user: User }) {
     } catch(e) {}
 
     try {
+      let finalLearningType = learningType;
+      
+      if (learningType === 'auto') {
+        // Lógica Adaptativa: Buscar el estilo más usado en el historial
+        const historyStyles = messages
+          .map(m => m.learningStyle)
+          .filter(s => s && s !== 'auto');
+        
+        if (historyStyles.length > 0) {
+          const counts = historyStyles.reduce((acc: any, s) => {
+            acc[s!] = (acc[s!] || 0) + 1;
+            return acc;
+          }, {});
+          finalLearningType = Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b);
+          console.log(`🤖 IA Adaptativa: Estilo detectado como predominante -> ${finalLearningType}`);
+        } else {
+          finalLearningType = 'visual'; // Fallback inicial
+        }
+      }
+
       const response = await fetch(`${MASTER_API_URL}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: user.email || "anonymous",
           user_question: messageText,
-          alexandria_type_learning: parseInt(learningType),
-          temario_prefix: null, // Ignorado ahora que el backend usa Firestore
+          alexandria_type_learning: finalLearningType,
+          temario_prefix: null,
           max_tokens: maxTokens
         })
       });
@@ -172,7 +201,7 @@ export default function Chat({ user }: { user: User }) {
       const visualization = data.chatbot_answer_visualization;
 
       await saveMessage("assistant", answerText, activeConvId, visualization);
-      if (fromVoice) speakWithElevenLabs(answerText);
+      if (fromVoice || finalLearningType === 'auditivo') speakWithElevenLabs(answerText);
 
     } catch (error: any) {
       console.error("❌ FALLO:", error);
@@ -381,6 +410,8 @@ export default function Chat({ user }: { user: User }) {
           onNewConversation={() => setCurrentConversationId(null)}
           onDeleteConversation={handleDeleteConversation}
           assignedSyllabi={assignedSyllabi}
+          userEmail={user?.email}
+          MASTER_API_URL={MASTER_API_URL}
         />
 
         <main className="flex-1 flex flex-col relative h-full overflow-hidden bg-zinc-950">
